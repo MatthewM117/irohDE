@@ -1,4 +1,4 @@
 # irohDE
 
 To run:
-- run "make" and then "./bin/irohde"
+- run "make" and then "./irohde"
