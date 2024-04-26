@@ -11,6 +11,9 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include <stdio.h>
+#include <iostream>
+#define STB_IMAGE_IMPLEMENTATION
+#include "headers/stb_image.h"
 #define GL_SILENCE_DEPRECATION
 #if defined(IMGUI_IMPL_OPENGL_ES2)
 #include <GLES2/gl2.h>
@@ -32,6 +35,46 @@
 static void glfw_error_callback(int error, const char* description)
 {
     fprintf(stderr, "GLFW Error %d: %s\n", error, description);
+}
+
+/* The following function is from ocornut's (Dear ImGUI creator) guide on loading images with ImGUI */
+/* https://github.com/ocornut/imgui/wiki/Image-Loading-and-Displaying-Examples#index */
+// Simple helper function to load an image into a OpenGL texture with common settings
+bool LoadTextureFromFile(const char* filename, GLuint* out_texture, int* out_width, int* out_height)
+{
+    // Load from file
+    int image_width = 0;
+    int image_height = 0;
+    
+    unsigned char* image_data = stbi_load(filename, &image_width, &image_height, NULL, 4);
+    if (image_data == NULL)
+        return false;
+
+    // Create a OpenGL texture identifier
+    GLuint image_texture;
+    std::cout << "here" << std::endl;
+    glGenTextures(1, &image_texture);
+    std::cout << "after here" << std::endl;
+    glBindTexture(GL_TEXTURE_2D, image_texture);
+
+    // Setup filtering parameters for display
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // This is required on WebGL for non power-of-two textures
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); // Same
+
+    // Upload pixels into texture
+#if defined(GL_UNPACK_ROW_LENGTH) && !defined(__EMSCRIPTEN__)
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+#endif
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image_width, image_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
+    stbi_image_free(image_data);
+
+    *out_texture = image_texture;
+    *out_width = image_width;
+    *out_height = image_height;
+
+    return true;
 }
 
 // Main code
@@ -65,7 +108,7 @@ int main(int, char**)
 #endif
 
     // Create window with graphics context
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "Dear ImGui GLFW+OpenGL3 example", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(1280, 720, "IrohDE", nullptr, nullptr);
     if (window == nullptr)
         return 1;
     glfwMakeContextCurrent(window);
@@ -111,6 +154,12 @@ int main(int, char**)
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
+    int my_image_width = 0;
+    int my_image_height = 0;
+    GLuint my_image_texture = 0;
+    bool ret = LoadTextureFromFile("images/uncle_iroh.png", &my_image_texture, &my_image_width, &my_image_height);
+    IM_ASSERT(ret);
+
     // Main loop
 #ifdef __EMSCRIPTEN__
     // For an Emscripten build we are disabling file-system access, so let's not attempt to do a fopen() of the imgui.ini file.
@@ -133,6 +182,42 @@ int main(int, char**)
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
+        {
+            ImGui::Begin("IrohDE");
+            ImGui::Text("Uncle Iroh's Text Editor");
+
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 10.0f); // gives some space at the top
+            ImGui::Image((void*)(intptr_t)my_image_texture, ImVec2(596, 335));
+
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 350.0f); // makes the image appear behind the text input
+
+            // fixed-sized buffer for now, but eventually we need to change it to dynamically resizable strings.
+            // see ImGuiInputTextFlags_CallbackResize and the code in misc/cpp/imgui_stdlib.h for how to setup InputText() for this.
+            static char text[1024 * 16] =
+                "/*\n"
+                " Welcome to IrohDE!\n"
+                " You can write your code here.\n"
+                "*/\n\n"
+                "int main() {\n"
+                "\treturn 0;\n"
+                "}";
+            static ImGuiInputTextFlags flags = ImGuiInputTextFlags_AllowTabInput;
+            //ImGui::InputTextMultiline("##source", text, IM_ARRAYSIZE(text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 16), flags);
+            ImGui::InputTextMultiline("##source", text, IM_ARRAYSIZE(text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 16 * 2), flags);
+
+            ImGui::End();
+        }
+
+        /*
+        {
+            ImGui::Begin("OpenGL Texture Text");
+            ImGui::Text("pointer = %x", my_image_texture);
+            ImGui::Text("size = %d x %d", my_image_width, my_image_height);
+            ImGui::Image((void*)(intptr_t)my_image_texture, ImVec2(my_image_width, my_image_height));
+            ImGui::End();
+        }*/
+
+        /*
         // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
         if (show_demo_window)
             ImGui::ShowDemoWindow(&show_demo_window);
@@ -158,7 +243,7 @@ int main(int, char**)
 
             ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
             ImGui::End();
-        }
+        }*/
 
         // 3. Show another simple window.
         if (show_another_window)
