@@ -13,6 +13,9 @@
 #include <stdio.h>
 #include <iostream>
 #include <string>
+#include <fstream>
+#include <cstdlib>
+#include <array>
 #define STB_IMAGE_IMPLEMENTATION
 #include "headers/stb_image.h"
 #define GL_SILENCE_DEPRECATION
@@ -53,9 +56,7 @@ bool LoadTextureFromFile(const char* filename, GLuint* out_texture, int* out_wid
 
     // Create a OpenGL texture identifier
     GLuint image_texture;
-    std::cout << "here" << std::endl;
     glGenTextures(1, &image_texture);
-    std::cout << "after here" << std::endl;
     glBindTexture(GL_TEXTURE_2D, image_texture);
 
     // Setup filtering parameters for display
@@ -100,6 +101,90 @@ static bool MyInputTextMultiline(const char* label, ImVector<char>* my_str, cons
 
     return ImGui::InputTextMultiline(label, my_str->begin(), (size_t)my_str->size(), size, flags | ImGuiInputTextFlags_CallbackResize, MyResizeCallback, (void*)my_str);
 }
+
+static bool MyInputText(const char* label, ImVector<char>* my_str, const ImVec2& size = ImVec2(0, 0), ImGuiInputTextFlags flags = 0)
+{
+    IM_ASSERT((flags & ImGuiInputTextFlags_CallbackResize) == 0);
+
+    flags |= ImGuiInputTextFlags_CallbackResize;
+
+    return ImGui::InputText(label, my_str->begin(), (size_t)my_str->size(), flags | ImGuiInputTextFlags_CallbackResize, MyResizeCallback, (void*)my_str);
+}
+
+static void SaveToFile(std::string filename, std::string theText)
+{
+    // make sure to append a new line to the end of the file text
+    // otherwise errors will occur
+    if (!theText.empty() && theText.back() != '\n') {
+        theText += '\n';
+    }
+
+    std::ofstream OutFile(filename);
+
+    OutFile << theText;
+
+    OutFile.close();
+}
+
+static ImVector<char> OpenFile(std::string filename)
+{
+    std::string fileLine;
+
+    std::ifstream InFile(filename);
+
+    ImVector<char> outputText;
+    char byte;
+    while (InFile.get(byte)) {
+        outputText.push_back(byte);
+    }
+
+    InFile.close();
+    return outputText;
+}
+
+static std::string FileNameWithoutDot(const std::string& str)
+{
+    size_t dotPos = str.find('.');
+    if (dotPos != std::string::npos) {
+        return str.substr(0, dotPos);
+    }
+    return str;
+}
+
+static std::string RunConsoleCommand(std::string command) {
+    FILE* pipe = popen(command.c_str(), "r");
+    if (!pipe) {
+        std::cerr << "Error: Unable to open pipe." << std::endl;
+        return "err";
+    }
+
+    std::string newConsoleOutputText = "";
+
+    std::array<char, 128> buffer;
+    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
+        //std::cout << buffer.data();
+        newConsoleOutputText += buffer.data();
+    }
+
+    pclose(pipe);
+
+    std::string searchString = "g++";
+
+    if (command.find(searchString) != std::string::npos) {
+        newConsoleOutputText = "Compiled successfully.";
+    }
+
+    return newConsoleOutputText;
+}
+
+// global variables
+
+static std::string currentFile = "no file opened";
+static std::string consoleOutputText = "";
+
+// Note that because we need to store a terminating zero character, our size/capacity are 1 more
+// than usually reported by a typical string class.
+static ImVector<char> my_str;
 
 // Main code
 int main(int, char**)
@@ -174,15 +259,23 @@ int main(int, char**)
     //IM_ASSERT(font != nullptr);
 
     // Our state
-    bool show_demo_window = true;
+    bool show_demo_window = false;
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
+    // for file editing background
     int my_image_width = 0;
     int my_image_height = 0;
     GLuint my_image_texture = 0;
     bool ret = LoadTextureFromFile("images/uncle_iroh.png", &my_image_texture, &my_image_width, &my_image_height);
     IM_ASSERT(ret);
+
+    // for console background
+    int my_image_width2 = 0;
+    int my_image_height2 = 0;
+    GLuint my_image_texture2 = 0;
+    bool ret2 = LoadTextureFromFile("images/iroh-tea.png", &my_image_texture2, &my_image_width2, &my_image_height2);
+    IM_ASSERT(ret2);
 
     // Main loop
 #ifdef __EMSCRIPTEN__
@@ -208,34 +301,107 @@ int main(int, char**)
 
         {
             ImGui::Begin("IrohDE");
-            ImGui::Text("Uncle Iroh's Text Editor");
+            ImGui::Text("Editing: %s", currentFile.c_str());
 
             ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 10.0f); // gives some space at the top
             ImGui::Image((void*)(intptr_t)my_image_texture, ImVec2(596, 335));
 
             ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 350.0f); // makes the image appear behind the text input
 
-            // fixed-sized buffer for now, but eventually we need to change it to dynamically resizable strings.
-            // see ImGuiInputTextFlags_CallbackResize and the code in misc/cpp/imgui_stdlib.h for how to setup InputText() for this.
-            // static char text[1024 * 16] =
-            //     "/*\n"
-            //     " Welcome to IrohDE!\n"
-            //     " You can write your code here.\n"
-            //     "*/\n\n"
-            //     "int main() {\n"
-            //     "\treturn 0;\n"
-            //     "}";
-            //static ImGuiInputTextFlags flags = ImGuiInputTextFlags_AllowTabInput;
-            //ImGui::InputTextMultiline("##source", text, IM_ARRAYSIZE(text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 16), flags);
-            //ImGui::InputTextMultiline("##source", text, IM_ARRAYSIZE(text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 16 * 2), flags);
-
-            // Note that because we need to store a terminating zero character, our size/capacity are 1 more
-            // than usually reported by a typical string class.
-            static ImVector<char> my_str;
             if (my_str.empty())
                 my_str.push_back(0);
             MyInputTextMultiline("##MyStr", &my_str, ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 16));
-            ImGui::Text("Data: %p\nSize: %d\nCapacity: %d", (void*)my_str.begin(), my_str.size(), my_str.capacity());
+            //ImGui::Text("Data: %p\nSize: %d\nCapacity: %d", (void*)my_str.begin(), my_str.size(), my_str.capacity());
+
+            if (ImGui::Button("Save")) {
+                std::string newText;
+                if (!my_str.empty()) {
+                    newText.assign(my_str.begin(), my_str.end());
+                }
+                // get rid of last char because it is an unsupported text format
+                if (!newText.empty()) {
+                    newText.pop_back();
+                }
+                SaveToFile(currentFile.c_str(), newText);
+            }
+
+            ImGui::End();
+        }
+
+        {
+            ImGui::Begin("Files");
+            static ImVector<char> file_name;
+            if (file_name.empty())
+                file_name.push_back(0);
+            MyInputTextMultiline("##FileName", &file_name, ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 2));
+
+            if (ImGui::Button("Create file")) {
+                currentFile = "";
+                if (!file_name.empty()) {
+                    currentFile.assign(file_name.begin(), file_name.end());
+                }
+                SaveToFile(currentFile.c_str(), "lol");
+            }
+
+            if (ImGui::Button("Open file")) {
+                currentFile = "";
+                if (!file_name.empty()) {
+                    currentFile.assign(file_name.begin(), file_name.end());
+                }
+                my_str = OpenFile(currentFile.c_str());
+            }
+
+            ImGui::End();
+        }
+
+        {
+            ImGui::Begin("Console");
+            //ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 10.0f);
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 300.0f);
+            ImGui::Image((void*)(intptr_t)my_image_texture2, ImVec2(150, 208));
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 200.0f);
+            
+            static ImVector<char> custom_console_text;
+            if (custom_console_text.empty())
+                custom_console_text.push_back(0);
+            MyInputText("##CustomConsoleText", &custom_console_text, ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 2));
+
+            if (ImGui::Button("Execute")) {
+                std::string command = "";
+                if (!custom_console_text.empty()) {
+                    command.assign(custom_console_text.begin(), custom_console_text.end());
+                }
+
+                consoleOutputText = RunConsoleCommand(command);
+            }
+
+            // ImGui::Begin("Console", nullptr, ImGuiWindowFlags_NoResize);
+            // ImVec2 windowSize(400, 300);
+            // ImGui::SetWindowSize(windowSize);
+
+            if (ImGui::Button("Compile (C++)")) {
+                std::string command = "g++ -o " + FileNameWithoutDot(currentFile.c_str()) + " " + currentFile.c_str();
+                consoleOutputText = RunConsoleCommand(command);
+            }
+
+            if (ImGui::Button("Run (C++)")) {
+                std::string command = "./" + FileNameWithoutDot(currentFile.c_str());
+                consoleOutputText = RunConsoleCommand(command);
+            }
+
+            ImGui::Text("Output:");
+            
+            //ImDrawList* draw_list = ImGui::GetWindowDrawList();
+            static float wrap_width = 300.0f;
+
+            ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + wrap_width);
+            //ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
+            ImGui::Text("%s", consoleOutputText.c_str());
+            //ImGui::PopStyleColor();
+
+            //draw_list->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(0, 222, 255, 25));
+            ImGui::PopTextWrapPos();
+            
 
             ImGui::End();
         }
@@ -249,11 +415,11 @@ int main(int, char**)
             ImGui::End();
         }*/
 
-        /*
+        
         // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
         if (show_demo_window)
             ImGui::ShowDemoWindow(&show_demo_window);
-
+        /*
         // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
         {
             static float f = 0.0f;
