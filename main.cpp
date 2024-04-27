@@ -16,6 +16,8 @@
 #include <fstream>
 #include <cstdlib>
 #include <array>
+#include <map>
+#include <vector>
 #define STB_IMAGE_IMPLEMENTATION
 #include "headers/stb_image.h"
 #define GL_SILENCE_DEPRECATION
@@ -177,10 +179,35 @@ static std::string RunConsoleCommand(std::string command) {
     return newConsoleOutputText;
 }
 
+static std::map<int, ImVector<char>> indexed_im_vectors;
+
+static void AddIndexedImVector(int index, const ImVector<char>& im_vector) {
+    indexed_im_vectors[index] = im_vector;
+}
+
+static ImVector<char>& GetIndexedImVector(int index) {
+    return indexed_im_vectors[index];
+}
+
+static void RemoveIndexedImVector(int index) {
+    indexed_im_vectors.erase(index);
+
+    // Recalculate indexes
+    int new_index = 0;
+    std::map<int, ImVector<char>> new_map;
+    for (const auto& pair : indexed_im_vectors) {
+        new_map[new_index++] = pair.second;
+    }
+    indexed_im_vectors = new_map;
+}
+
 // global variables
 
 static std::string currentFile = "no file opened";
 static std::string consoleOutputText = "";
+static ImVector<std::string> tab_names;
+static ImVector<int> active_tabs;
+static int next_tab_id = 0;
 
 // Note that because we need to store a terminating zero character, our size/capacity are 1 more
 // than usually reported by a typical string class.
@@ -308,21 +335,91 @@ int main(int, char**)
 
             ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 350.0f); // makes the image appear behind the text input
 
-            if (my_str.empty())
-                my_str.push_back(0);
-            MyInputTextMultiline("##MyStr", &my_str, ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 16));
             //ImGui::Text("Data: %p\nSize: %d\nCapacity: %d", (void*)my_str.begin(), my_str.size(), my_str.capacity());
+            
+            // if (next_tab_id == 0) // Initialize with some default tabs
+            // {
+            //     for (int i = 0; i < 3; i++)
+            //     {
+            //         active_tabs.push_back(next_tab_id);
+            //         tab_names.push_back("Tab " + std::to_string(next_tab_id));
+            //         next_tab_id++;
+            //     }
+            // }
 
-            if (ImGui::Button("Save")) {
-                std::string newText;
-                if (!my_str.empty()) {
-                    newText.assign(my_str.begin(), my_str.end());
+            // start with 1 default tab
+            // if (next_tab_id == 0)
+            // {
+            //     active_tabs.push_back(next_tab_id);
+            //     tab_names.push_back("empty");
+            //     next_tab_id++;
+            // }
+
+            static bool show_leading_button = true;
+            static bool show_trailing_button = false;
+
+            static ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_AutoSelectNewTabs | ImGuiTabBarFlags_Reorderable | ImGuiTabBarFlags_FittingPolicyResizeDown;
+
+            if (ImGui::BeginTabBar("MyTabBar", tab_bar_flags))
+            {
+                if (show_leading_button)
+                    if (ImGui::TabItemButton("?", ImGuiTabItemFlags_Leading | ImGuiTabItemFlags_NoTooltip))
+                        ImGui::OpenPopup("MyHelpMenu");
+                if (ImGui::BeginPopup("MyHelpMenu"))
+                {
+                    ImGui::Selectable("Hello!");
+                    ImGui::EndPopup();
                 }
-                // get rid of last char because it is an unsupported text format
-                if (!newText.empty()) {
-                    newText.pop_back();
+
+                if (show_trailing_button)
+                    if (ImGui::TabItemButton("+", ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
+                    {
+                        active_tabs.push_back(next_tab_id); // Add new tab
+                        tab_names.push_back("New Tab " + std::to_string(next_tab_id));
+                        next_tab_id++;
+                    }
+
+                for (int n = 0; n < active_tabs.Size; )
+                {
+                    bool open = true;
+                    char name[16];
+                    snprintf(name, IM_ARRAYSIZE(name), "%04d", active_tabs[n]);
+                    if (ImGui::BeginTabItem(tab_names[n].c_str(), &open, ImGuiTabItemFlags_None))
+                    {
+                        // if (my_str.empty())
+                        //     my_str.push_back(0);
+                        currentFile = tab_names[n];
+                        ImVector<char>& retrieved_vector = GetIndexedImVector(n);
+                        MyInputTextMultiline("##MyStr", &retrieved_vector, ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 16));
+                        if (ImGui::Button("Save")) {
+                            std::string newText;
+                            if (!retrieved_vector.empty()) {
+                                newText.assign(retrieved_vector.begin(), retrieved_vector.end());
+                            }
+                            // get rid of last char because it is an unsupported text format
+                            if (!newText.empty()) {
+                                newText.pop_back();
+                            }
+                            SaveToFile(currentFile.c_str(), newText);
+                        }
+                        ImGui::EndTabItem();
+                    }
+
+                    if (!open)
+                    {
+                        active_tabs.erase(active_tabs.Data + n);
+                        tab_names.erase(tab_names.Data + n);
+                        RemoveIndexedImVector(n);
+                        next_tab_id--;
+                    }
+                    else
+                    {
+                        n++;
+                        
+                    }
                 }
-                SaveToFile(currentFile.c_str(), newText);
+
+                ImGui::EndTabBar();
             }
 
             ImGui::End();
@@ -341,6 +438,19 @@ int main(int, char**)
                     currentFile.assign(file_name.begin(), file_name.end());
                 }
                 SaveToFile(currentFile.c_str(), "lol");
+
+                ImVector<char> my_vector;
+                if (my_vector.empty())
+                    my_vector.push_back(0);
+
+                AddIndexedImVector(next_tab_id, my_vector);
+
+                // add new tab
+                active_tabs.push_back(next_tab_id);
+                tab_names.push_back(currentFile.c_str());
+                next_tab_id++;
+
+
             }
 
             if (ImGui::Button("Open file")) {
@@ -348,7 +458,20 @@ int main(int, char**)
                 if (!file_name.empty()) {
                     currentFile.assign(file_name.begin(), file_name.end());
                 }
-                my_str = OpenFile(currentFile.c_str());
+                //my_str = OpenFile(currentFile.c_str());
+
+                ImVector<char> my_vector;
+                if (my_vector.empty())
+                    my_vector.push_back(0);
+
+                my_vector = OpenFile(currentFile.c_str());
+
+                AddIndexedImVector(next_tab_id, my_vector);
+
+                // add new tab
+                active_tabs.push_back(next_tab_id);
+                tab_names.push_back(currentFile.c_str());
+                next_tab_id++;
             }
 
             ImGui::End();
@@ -381,11 +504,13 @@ int main(int, char**)
 
             if (ImGui::Button("Compile (C++)")) {
                 std::string command = "g++ -o " + FileNameWithoutDot(currentFile.c_str()) + " " + currentFile.c_str();
+                std::cout << command << std::endl;
                 consoleOutputText = RunConsoleCommand(command);
             }
 
             if (ImGui::Button("Run (C++)")) {
                 std::string command = "./" + FileNameWithoutDot(currentFile.c_str());
+                std::cout << command << std::endl;
                 consoleOutputText = RunConsoleCommand(command);
             }
 
