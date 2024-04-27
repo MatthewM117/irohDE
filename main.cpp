@@ -12,6 +12,7 @@
 #include "imgui_impl_opengl3.h"
 #include <stdio.h>
 #include <iostream>
+#include <string>
 #define STB_IMAGE_IMPLEMENTATION
 #include "headers/stb_image.h"
 #define GL_SILENCE_DEPRECATION
@@ -75,6 +76,29 @@ bool LoadTextureFromFile(const char* filename, GLuint* out_texture, int* out_wid
     *out_height = image_height;
 
     return true;
+}
+
+// callback function to resize the string buffer (from demo code)
+static int MyResizeCallback(ImGuiInputTextCallbackData* data)
+{
+    if (data->EventFlag == ImGuiInputTextFlags_CallbackResize)
+    {
+        ImVector<char>* my_str = (ImVector<char>*)data->UserData;
+        IM_ASSERT(my_str->begin() == data->Buf);
+        my_str->resize(data->BufSize); // NB: On resizing calls, generally data->BufSize == data->BufTextLen + 1
+        data->Buf = my_str->begin();
+    }
+    return 0;
+}
+
+// from the demo code
+static bool MyInputTextMultiline(const char* label, ImVector<char>* my_str, const ImVec2& size = ImVec2(0, 0), ImGuiInputTextFlags flags = 0)
+{
+    IM_ASSERT((flags & ImGuiInputTextFlags_CallbackResize) == 0);
+
+    flags |= ImGuiInputTextFlags_CallbackResize | ImGuiInputTextFlags_AllowTabInput;
+
+    return ImGui::InputTextMultiline(label, my_str->begin(), (size_t)my_str->size(), size, flags | ImGuiInputTextFlags_CallbackResize, MyResizeCallback, (void*)my_str);
 }
 
 // Main code
@@ -193,17 +217,25 @@ int main(int, char**)
 
             // fixed-sized buffer for now, but eventually we need to change it to dynamically resizable strings.
             // see ImGuiInputTextFlags_CallbackResize and the code in misc/cpp/imgui_stdlib.h for how to setup InputText() for this.
-            static char text[1024 * 16] =
-                "/*\n"
-                " Welcome to IrohDE!\n"
-                " You can write your code here.\n"
-                "*/\n\n"
-                "int main() {\n"
-                "\treturn 0;\n"
-                "}";
-            static ImGuiInputTextFlags flags = ImGuiInputTextFlags_AllowTabInput;
+            // static char text[1024 * 16] =
+            //     "/*\n"
+            //     " Welcome to IrohDE!\n"
+            //     " You can write your code here.\n"
+            //     "*/\n\n"
+            //     "int main() {\n"
+            //     "\treturn 0;\n"
+            //     "}";
+            //static ImGuiInputTextFlags flags = ImGuiInputTextFlags_AllowTabInput;
             //ImGui::InputTextMultiline("##source", text, IM_ARRAYSIZE(text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 16), flags);
-            ImGui::InputTextMultiline("##source", text, IM_ARRAYSIZE(text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 16 * 2), flags);
+            //ImGui::InputTextMultiline("##source", text, IM_ARRAYSIZE(text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 16 * 2), flags);
+
+            // Note that because we need to store a terminating zero character, our size/capacity are 1 more
+            // than usually reported by a typical string class.
+            static ImVector<char> my_str;
+            if (my_str.empty())
+                my_str.push_back(0);
+            MyInputTextMultiline("##MyStr", &my_str, ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 16));
+            ImGui::Text("Data: %p\nSize: %d\nCapacity: %d", (void*)my_str.begin(), my_str.size(), my_str.capacity());
 
             ImGui::End();
         }
