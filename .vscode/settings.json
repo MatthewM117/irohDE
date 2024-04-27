@@ -42,6 +42,14 @@
         "algorithm": "cpp",
         "fstream": "cpp",
         "iomanip": "cpp",
-        "array": "cpp"
+        "array": "cpp",
+        "__split_buffer": "cpp",
+        "vector": "cpp",
+        "__hash_table": "cpp",
+        "__node_handle": "cpp",
+        "__tree": "cpp",
+        "map": "cpp",
+        "optional": "cpp",
+        "unordered_map": "cpp"
     }
 }

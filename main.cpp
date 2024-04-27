@@ -18,6 +18,7 @@
 #include <array>
 #include <map>
 #include <vector>
+#include <filesystem>
 #define STB_IMAGE_IMPLEMENTATION
 #include "headers/stb_image.h"
 #define GL_SILENCE_DEPRECATION
@@ -146,12 +147,13 @@ static ImVector<char> OpenFile(std::string filename)
 
 static std::string FileNameWithoutDot(const std::string& str)
 {
-    size_t dotPos = str.find('.');
+    size_t dotPos = str.find_last_of('.');
     if (dotPos != std::string::npos) {
         return str.substr(0, dotPos);
     }
     return str;
 }
+
 
 static std::string RunConsoleCommand(std::string command) {
     FILE* pipe = popen(command.c_str(), "r");
@@ -208,10 +210,16 @@ static std::string consoleOutputText = "";
 static ImVector<std::string> tab_names;
 static ImVector<int> active_tabs;
 static int next_tab_id = 0;
+std::string displayedDir = "";
+static ImVector<char> dir_name;
+std::string currentDirectory = "";
 
 // Note that because we need to store a terminating zero character, our size/capacity are 1 more
 // than usually reported by a typical string class.
 static ImVector<char> my_str;
+
+std::__fs::filesystem::path absolute_path = std::__fs::filesystem::absolute("irohde");
+std::string absPath = "Absolute path to irohDE directory: " + absolute_path.string();
 
 // Main code
 int main(int, char**)
@@ -367,7 +375,7 @@ int main(int, char**)
                         ImGui::OpenPopup("MyHelpMenu");
                 if (ImGui::BeginPopup("MyHelpMenu"))
                 {
-                    ImGui::Selectable("Hello!");
+                    ImGui::Selectable("Create or open a file and it will appear here.");
                     ImGui::EndPopup();
                 }
 
@@ -400,7 +408,10 @@ int main(int, char**)
                             if (!newText.empty()) {
                                 newText.pop_back();
                             }
-                            SaveToFile(currentFile.c_str(), newText);
+                            std::string filePath = currentDirectory.c_str() + currentFile;
+                            //std::__fs::filesystem::path absolute_path = std::__fs::filesystem::absolute(currentFile.c_str());
+                            //std::cout << "Opened file: " << currentFile.c_str() << " (absolute path: " << absolute_path << ")" << std::endl;
+                            SaveToFile(filePath.c_str(), newText);
                         }
                         ImGui::EndTabItem();
                     }
@@ -427,6 +438,26 @@ int main(int, char**)
 
         {
             ImGui::Begin("Files");
+
+            ImGui::Text("%s", absPath.c_str());
+
+            ImGui::Text("Path to Directory: (Include '/' at end of path. Leave blank for current irohDE directory.)");
+            if (dir_name.empty())
+                dir_name.push_back(0);
+            MyInputTextMultiline("##DirName", &dir_name, ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 2));
+
+            if (ImGui::Button("CD")) {
+                currentDirectory = "";
+                if (!dir_name.empty()) {
+                    currentDirectory.assign(dir_name.begin(), dir_name.end());
+                }
+                std::string command = "ls " + currentDirectory;
+                displayedDir = RunConsoleCommand(command);
+
+                dir_name.clear();
+            }
+
+            ImGui::Text("File name:");
             static ImVector<char> file_name;
             if (file_name.empty())
                 file_name.push_back(0);
@@ -437,7 +468,9 @@ int main(int, char**)
                 if (!file_name.empty()) {
                     currentFile.assign(file_name.begin(), file_name.end());
                 }
-                SaveToFile(currentFile.c_str(), "lol");
+                std::string filePath = currentDirectory.c_str() + currentFile;
+                //std::cout << filePath << std::endl;
+                SaveToFile(filePath.c_str(), "lol");
 
                 ImVector<char> my_vector;
                 if (my_vector.empty())
@@ -450,7 +483,7 @@ int main(int, char**)
                 tab_names.push_back(currentFile.c_str());
                 next_tab_id++;
 
-
+                file_name.clear();
             }
 
             if (ImGui::Button("Open file")) {
@@ -464,7 +497,8 @@ int main(int, char**)
                 if (my_vector.empty())
                     my_vector.push_back(0);
 
-                my_vector = OpenFile(currentFile.c_str());
+                std::string filePath = currentDirectory.c_str() + currentFile;
+                my_vector = OpenFile(filePath.c_str());
 
                 AddIndexedImVector(next_tab_id, my_vector);
 
@@ -472,7 +506,16 @@ int main(int, char**)
                 active_tabs.push_back(next_tab_id);
                 tab_names.push_back(currentFile.c_str());
                 next_tab_id++;
+
+                file_name.clear();
             }
+
+            ImGui::Text("Current Directory: %s", currentDirectory.c_str());
+            if (ImGui::Button("Refresh")) {
+                std::string command = "ls " + currentDirectory;
+                displayedDir = RunConsoleCommand(command);
+            }
+            ImGui::Text("%s", displayedDir.c_str());
 
             ImGui::End();
         }
@@ -503,14 +546,16 @@ int main(int, char**)
             // ImGui::SetWindowSize(windowSize);
 
             if (ImGui::Button("Compile (C++)")) {
-                std::string command = "g++ -o " + FileNameWithoutDot(currentFile.c_str()) + " " + currentFile.c_str();
-                std::cout << command << std::endl;
+                std::string filePath = currentDirectory.c_str() + currentFile;
+                std::string command = "g++ -o " + FileNameWithoutDot(filePath.c_str()) + " " + filePath.c_str();
+                //std::cout << command << std::endl;
                 consoleOutputText = RunConsoleCommand(command);
             }
 
             if (ImGui::Button("Run (C++)")) {
-                std::string command = "./" + FileNameWithoutDot(currentFile.c_str());
-                std::cout << command << std::endl;
+                std::string filePath = currentDirectory.c_str() + currentFile;
+                std::string command = "./" + FileNameWithoutDot(filePath.c_str());
+                //std::cout << command << std::endl;
                 consoleOutputText = RunConsoleCommand(command);
             }
 
